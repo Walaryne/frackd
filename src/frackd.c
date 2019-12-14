@@ -99,8 +99,10 @@ int main(int argc, char **argv) {
 	ev.events = EPOLLIN;
 	ev.data.fd = infd;
 
-	//TODO Error checking here too!
-	epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &ev);
+	if(epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &ev)) {
+		perror("epoll_ctl");
+		exit(1);
+	}
 
 	if((wpc = readfrackrc(watchpaths, executables)) == 0) {
 		dprintf(STDERR_FILENO, ".frackrc was malformed or empty\n");
