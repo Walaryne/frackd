@@ -109,6 +109,7 @@ int main(int argc, char **argv) {
 
 	for(int i = 0; i < wpc; ++i) {
 		wep[i].executable = &executables[i];
+		//This is a failure point. Make a wrapper for error handling.
 		wep[i].wd = inotify_add_watch(infd, watchpaths[i], IN_CLOSE_WRITE);
 	}
 
