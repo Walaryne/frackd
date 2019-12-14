@@ -31,7 +31,6 @@ int readfrackrc(char **paths, char **executables) {
 		perror("fopen");
 		dprintf(STDERR_FILENO, "This error was likely caused " \
 			"due to a missing .frackrc in your home folder.\n");
-		dprintf(STDERR_FILENO, "%s\n", path);
 		exit(1);
 	}
 
