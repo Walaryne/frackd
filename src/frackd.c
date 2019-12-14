@@ -107,10 +107,14 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	for(int i = 0; i < wpc; ++i) {
+	for(int temp, i = 0; i < wpc; ++i) {
+		temp = inotify_add_watch(infd, watchpaths[i], IN_CLOSE_WRITE);
 		wep[i].executable = &executables[i];
-		//This is a failure point. Make a wrapper for error handling.
-		wep[i].wd = inotify_add_watch(infd, watchpaths[i], IN_CLOSE_WRITE);
+
+		if(temp < 0) {
+			perror("inotify_add_watch");
+			exit(1);
+		}
 	}
 
 	while(running) {
