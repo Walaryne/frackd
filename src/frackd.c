@@ -6,9 +6,20 @@
 #include <string.h>
 #include <sys/inotify.h>
 #include <unistd.h>
+#include <syslog.h>
 
 #define MAX_EVENTS 16
 #define MAX_WATCH_DESCRIPTORS 512
+
+#ifdef USE_SYSLOG
+
+#define WARN(...) syslog(LOG_DAEMON | LOG_INFO, __VA_ARGS__)
+
+#else
+
+#define WARN(...) dprintf(STDERR_FILENO, "FRACKD: " __VA_ARGS__)
+
+#endif
 
 struct wdexpair {
 	int wd;
@@ -17,26 +28,25 @@ struct wdexpair {
 
 int readfrackrc(char **paths, char **executables) {
 	int watchcount = 0;
-
 	FILE *file = NULL;
 	char *home = getenv("HOME");
 	char *filename = "/.frackrc";
-	char path[sizeof home + sizeof filename];
+	char path[(strlen(home) + strlen(filename)) + 2];
 	char *watch, *executable;
 
-	strcat(path, home);
+	strcpy(path, home);
 	strcat(path, filename);
 
 	if((file = fopen(path, "r")) == NULL) {
 		perror("fopen");
-		dprintf(STDERR_FILENO, "This error was likely caused " \
+		WARN("This error was likely caused " \
 			"due to a missing .frackrc in your home folder.\n");
 		exit(1);
 	}
 
 	while(1) {
 		if(watchcount == MAX_WATCH_DESCRIPTORS) {
-			dprintf(STDERR_FILENO, "WARNING: Maximum of %d watch(es) has been reached!",
+			WARN("WARNING: Maximum of %d watch(es) has been reached!",
 				MAX_WATCH_DESCRIPTORS);
 			return watchcount;
 		}
@@ -68,15 +78,21 @@ void handle_inotify(int infd, struct wdexpair *wep) {
 		event = (struct inotify_event *) ptr;
 		if(event->mask & IN_CLOSE_WRITE) {
 			//HACK: watch descriptors start at 1, so just do -1!
+			//If a rc-reload is ever created for new-style daemon support,
+			//a qsort() and bsearch() will be needed!
 			system(*(wep[event->wd - 1].executable));
 		}
 	}
 	return;
 }
 
+
+//TODO Write better logging system; stop using perror!
 int main(int argc, char **argv) {
 
-	//daemon(1, 0);
+	daemon(1, 0);
+
+	WARN("...frackd is starting...\n");
 
 	struct epoll_event ev, events[MAX_EVENTS];
 	struct wdexpair wep[MAX_WATCH_DESCRIPTORS];
@@ -104,7 +120,7 @@ int main(int argc, char **argv) {
 	}
 
 	if((wpc = readfrackrc(watchpaths, executables)) == 0) {
-		dprintf(STDERR_FILENO, ".frackrc was malformed or empty\n");
+		WARN(".frackrc was malformed or empty\n");
 		exit(1);
 	}
 
@@ -119,6 +135,7 @@ int main(int argc, char **argv) {
 	}
 
 	while(running) {
+		WARN("...frackd successfully started...\n");
 		epoll_wait(epfd, events, MAX_EVENTS, -1);
 
 		for(int n = 0; n < MAX_EVENTS; ++n) {
