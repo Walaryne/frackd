@@ -13,6 +13,17 @@
 #define MAX_EVENTS 16
 #define MAX_WATCH_DESCRIPTORS 512
 
+#ifdef NO_DAEMON
+
+#define DAEMON(x, y)
+
+#else
+
+#define DAEMON(x, y) daemon(x, y)
+#define USE_SYSLOG
+
+#endif
+
 #ifdef USE_SYSLOG
 
 #define WARN(...) syslog(LOG_DAEMON | LOG_INFO, __VA_ARGS__)
@@ -94,7 +105,7 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 
 int main(int argc, char **argv) {
 
-	daemon(1, 0);
+	DAEMON(1, 0);
 
 	WARN_LOG("...frackd is starting...\n");
 
