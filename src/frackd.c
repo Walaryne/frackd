@@ -94,7 +94,7 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 
 int main(int argc, char **argv) {
 
-	//daemon(1, 0);
+	daemon(1, 0);
 
 	WARN_LOG("...frackd is starting...\n");
 
