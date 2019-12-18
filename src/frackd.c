@@ -1,5 +1,7 @@
 #include <errno.h>
 #include <sys/epoll.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <stdio.h>
 #include <stdalign.h>
 #include <stdlib.h>
@@ -17,14 +19,13 @@
 
 #else
 
-#define WARN(...) dprintf(STDERR_FILENO, "FRACKD: " __VA_ARGS__)
+#define WARN(...) dprintf(STDERR_FILENO, __VA_ARGS__)
 
 #endif
 
-struct wdexpair {
-	int wd;
-	char **executable;
-};
+#define WARN_LOG(...) WARN("FRACKD_LOG: " __VA_ARGS__)
+
+#define WARN_PE(x) WARN("FRACKD_ERROR: " x ": " "%s\n", strerror(errno))
 
 int readfrackrc(char **paths, char **executables) {
 	int watchcount = 0;
@@ -38,15 +39,15 @@ int readfrackrc(char **paths, char **executables) {
 	strcat(path, filename);
 
 	if((file = fopen(path, "r")) == NULL) {
-		perror("fopen");
-		WARN("This error was likely caused " \
+		WARN_PE("fopen");
+		WARN_LOG("This error was likely caused " \
 			"due to a missing .frackrc in your home folder.\n");
 		exit(1);
 	}
 
 	while(1) {
 		if(watchcount == MAX_WATCH_DESCRIPTORS) {
-			WARN("WARNING: Maximum of %d watch(es) has been reached!",
+			WARN_LOG("WARNING: Maximum of %d watch(es) has been reached!\n",
 				MAX_WATCH_DESCRIPTORS);
 			return watchcount;
 		}
@@ -67,7 +68,7 @@ int readfrackrc(char **paths, char **executables) {
 	return watchcount;
 }
 
-void handle_inotify(int infd, struct wdexpair *wep) {
+void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 	alignas(struct inotify_event) char buf[4096];
 	struct inotify_event *event;
 	char *ptr;
@@ -80,34 +81,39 @@ void handle_inotify(int infd, struct wdexpair *wep) {
 			//HACK: watch descriptors start at 1, so just do -1!
 			//If a rc-reload is ever created for new-style daemon support,
 			//a qsort() and bsearch() will be needed!
-			system(*(wep[event->wd - 1].executable));
+			if(event->wd > lutmax) {
+				WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
+				"This should never happen; if it does, send a bug report asap.\n");
+				exit(1);
+			}
+			system(lut[event->wd]);
 		}
 	}
 	return;
 }
 
-
-//TODO Write better logging system; stop using perror!
 int main(int argc, char **argv) {
 
-	daemon(1, 0);
+	//daemon(1, 0);
 
-	WARN("...frackd is starting...\n");
+	WARN_LOG("...frackd is starting...\n");
 
 	struct epoll_event ev, events[MAX_EVENTS];
-	struct wdexpair wep[MAX_WATCH_DESCRIPTORS];
+	struct rlimit rl;
 	int infd, epfd, wpc, wd[MAX_WATCH_DESCRIPTORS];
 	char *watchpaths[MAX_WATCH_DESCRIPTORS];
 	char *executables[MAX_WATCH_DESCRIPTORS];
+	char **lut;
+	int lutmax;
 	int running = 1;
 
 	if((infd = inotify_init1(IN_NONBLOCK)) == -1) {
-		perror("inotify_init1");
+		WARN_PE("inotify_init1");
 		exit(1);
 	}
 
 	if((epfd = epoll_create1(0)) == -1) {
-		perror("epoll_create1");
+		WARN_PE("epoll_create1");
 		exit(1);
 	}
 
@@ -115,32 +121,41 @@ int main(int argc, char **argv) {
 	ev.data.fd = infd;
 
 	if(epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &ev)) {
-		perror("epoll_ctl");
+		WARN_PE("epoll_ctl");
 		exit(1);
 	}
 
 	if((wpc = readfrackrc(watchpaths, executables)) == 0) {
-		WARN(".frackrc was malformed or empty\n");
+		WARN_LOG("FATAL ERROR: .frackrc was empty or malformed\n");
 		exit(1);
 	}
 
+	getrlimit(RLIMIT_NOFILE, &rl);
+	lutmax = rl.rlim_cur;
+	lut = malloc(lutmax * sizeof lut);
+
 	for(int temp, i = 0; i < wpc; ++i) {
 		temp = inotify_add_watch(infd, watchpaths[i], IN_CLOSE_WRITE);
-		wep[i].executable = &executables[i];
 
 		if(temp < 0) {
-			perror("inotify_add_watch");
+			//perror("inotify_add_watch");
+			WARN_PE("inotify_add_watch");
 			exit(1);
 		}
+
+		lut[temp] = executables[i];
+
+		free(watchpaths[i]);
 	}
+	
+	WARN_LOG("...frackd successfully started...\n");
 
 	while(running) {
-		WARN("...frackd successfully started...\n");
 		epoll_wait(epfd, events, MAX_EVENTS, -1);
 
 		for(int n = 0; n < MAX_EVENTS; ++n) {
 			if(events[n].data.fd == infd) {
-				handle_inotify(infd, wep);
+				handle_inotify(infd, lut, lutmax);
 			}
 		}
 	}
