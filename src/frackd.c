@@ -49,20 +49,19 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 	int len = read(infd, &buf, sizeof buf);
 
 	for(ptr = buf; ptr < (buf + len); ptr += sizeof(struct inotify_event) + event->len) {
-		event = (struct inotify_event *) ptr;
-		if(event->mask & IN_CLOSE_WRITE) {
-			//HACK: watch descriptors start at 1, so just do -1!
-			//If a rc-reload is ever created for new-style daemon support,
-			//a qsort() and bsearch() will be needed!
-			if(event->wd > lutmax) {
-				WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
-				"This should never happen; if it does, send a bug report asap.\n");
-				exit(1);
-			}
-			system(lut[event->wd]);
-		}
-	}
-	return;
+        event = (struct inotify_event *) ptr;
+        if (event->mask & IN_CLOSE_WRITE) {
+            //HACK: watch descriptors start at 1, so just do -1!
+            //If a rc-reload is ever created for new-style daemon support,
+            //a qsort() and bsearch() will be needed!
+            if (event->wd > lutmax) {
+                WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
+                "This should never happen; if it does, send a bug report asap.\n");
+                exit(1);
+            }
+            system(lut[event->wd]);
+        }
+    }
 }
 
 int main(int argc, char **argv) {
@@ -73,12 +72,11 @@ int main(int argc, char **argv) {
 
 	struct epoll_event ev, events[MAX_EVENTS];
 	struct rlimit rl;
-	int infd, epfd, wpc, wd[MAX_WATCH_DESCRIPTORS];
+	int infd, epfd, wpc;
 	char *watchpaths[MAX_WATCH_DESCRIPTORS];
 	char *executables[MAX_WATCH_DESCRIPTORS];
 	char **lut;
 	int lutmax;
-	int running = 1;
 
 	if((infd = inotify_init1(IN_NONBLOCK)) == -1) {
 		WARN_PE("inotify_init1");
@@ -123,7 +121,7 @@ int main(int argc, char **argv) {
 	
 	WARN_LOG("...frackd successfully started...\n");
 
-	while(running) {
+	while(1) {
 		epoll_wait(epfd, events, MAX_EVENTS, -1);
 
 		for(int n = 0; n < MAX_EVENTS; ++n) {
