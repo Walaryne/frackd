@@ -50,11 +50,10 @@ int readfrackrc(char **paths, char **executables) {
 			break;
 		}
 
-
-
 		if((paths[watchcount] = tildeexpansion(watch, home)) != watch) {
 		    free(watch);
 		}
+
 		if((executables[watchcount] = tildeexpansion(executable, home)) != executable) {
 		    free(executable);
 		}
