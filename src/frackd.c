@@ -1,5 +1,23 @@
 #include "frackd.h"
 
+//FIXME This could allow a memory leak if return value isn't checked properly.
+char *tildeexpansion(char *str, char *home) {
+    unsigned long slen = strlen(str);
+    unsigned long hlen = strlen(home);
+    char *ptr = memchr(str, '~', slen);
+    //Easy check to see if ~ is the first character, and whether it was
+    //found in the first place.
+    if(ptr != NULL && str == ptr) {
+        char *buf = malloc(((slen - 1) + hlen + 2) * sizeof(char));
+        ++ptr;
+        strcpy(buf, home);
+        strcat(buf, ptr);
+        return buf;
+    } else {
+        return str;
+    }
+}
+
 int readfrackrc(char **paths, char **executables) {
 	int watchcount = 0;
 	FILE *file = NULL;
@@ -21,7 +39,7 @@ int readfrackrc(char **paths, char **executables) {
 	while(1) {
 		if(watchcount == MAX_WATCH_DESCRIPTORS) {
 			WARN_LOG("WARNING: Maximum of %d watch(es) has been reached!\n",
-				MAX_WATCH_DESCRIPTORS);
+			        MAX_WATCH_DESCRIPTORS);
 			return watchcount;
 		}
 
@@ -32,8 +50,14 @@ int readfrackrc(char **paths, char **executables) {
 			break;
 		}
 
-		paths[watchcount] = watch;
-		executables[watchcount] = executable;
+
+
+		if((paths[watchcount] = tildeexpansion(watch, home)) != watch) {
+		    free(watch);
+		}
+		if((executables[watchcount] = tildeexpansion(executable, home)) != executable) {
+		    free(executable);
+		}
 
 		++watchcount;
 	}
@@ -51,9 +75,7 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 	for(ptr = buf; ptr < (buf + len); ptr += sizeof(struct inotify_event) + event->len) {
         event = (struct inotify_event *) ptr;
         if (event->mask & IN_CLOSE_WRITE) {
-            //HACK: watch descriptors start at 1, so just do -1!
-            //If a rc-reload is ever created for new-style daemon support,
-            //a qsort() and bsearch() will be needed!
+            //Got rid of the hack, now using a lookup table.
             if (event->wd > lutmax) {
                 WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
                 "This should never happen; if it does, send a bug report asap.\n");
@@ -101,6 +123,7 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+	//TODO Check and see if RLIMIT_NOFILE is a sane source for malloc sizing.
 	getrlimit(RLIMIT_NOFILE, &rl);
 	lutmax = rl.rlim_cur;
 	lut = malloc(lutmax * sizeof lut);
@@ -116,6 +139,7 @@ int main(int argc, char **argv) {
 
 		lut[temp] = executables[i];
 
+		//Watchpaths aren't needed later at the moment, so free them for the sake of extra RAM.
 		free(watchpaths[i]);
 	}
 	
