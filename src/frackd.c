@@ -73,13 +73,15 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 
 	for(ptr = buf; ptr < (buf + len); ptr += sizeof(struct inotify_event) + event->len) {
         event = (struct inotify_event *) ptr;
+
+        if (event->wd > lutmax) {
+            WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
+                "This should never happen; if it does, send a bug report asap.\n");
+            exit(1);
+        }
+
         if (event->mask & IN_CLOSE_WRITE) {
             //Got rid of the hack, now using a lookup table.
-            if (event->wd > lutmax) {
-                WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
-                "This should never happen; if it does, send a bug report asap.\n");
-                exit(1);
-            }
             system(lut[event->wd]);
         }
     }
