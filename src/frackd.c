@@ -1,17 +1,40 @@
 #include "frackd.h"
 
 //FIXME This could allow a memory leak if return value isn't checked properly.
-char *tildeexpansion(char *str, char *home) {
+char *spechandler(char *str, char *home) {
     unsigned long slen = strlen(str);
     unsigned long hlen = strlen(home);
-    char *ptr = memchr(str, '~', slen);
-    //Easy check to see if ~ is the first character, and whether it was
-    //found in the first place.
-    if(ptr != NULL && str == ptr) {
-        char *buf = malloc(((slen - 1) + hlen + 2) * sizeof(char));
-        ++ptr;
-        strcpy(buf, home);
-        strcat(buf, ptr);
+    char quotechar = 0;
+    char *tmp = str;
+
+    //Check and see if the first character is a quote of some sort
+    //If so, silently ignore it.
+    switch(*tmp) {
+        case '"':
+        case '\'':
+        case '`': {
+            quotechar = *tmp;
+            ++tmp;
+        }
+        default: {
+            break;
+        }
+    }
+
+    //Easy check to see if ~ is the first character.
+    if(*tmp == '~') {
+        char *buf = malloc(((slen - 1) + hlen + 4) * sizeof(char));
+        ++tmp;
+        if(quotechar) {
+            *buf = quotechar;
+            ++buf;
+            strcpy(buf, home);
+            strcat(buf, tmp);
+            --buf;
+        } else {
+            strcpy(buf, home);
+            strcat(buf, tmp);
+        }
         return buf;
     } else {
         return str;
@@ -46,15 +69,15 @@ int readfrackrc(char **paths, char **executables) {
 		//WARNING!
 		//UNFREED ALLOCATIONS!
 		//Might be a problem later.
-		if((fscanf(file, "%ms %ms", &watch, &executable)) < 2) {
+		if((fscanf(file, "%m[^:]:%m[^\n]", &watch, &executable)) < 2) {
 			break;
 		}
 
-		if((paths[watchcount] = tildeexpansion(watch, home)) != watch) {
+		if((paths[watchcount] = spechandler(watch, home)) != watch) {
 		    free(watch);
 		}
 
-		if((executables[watchcount] = tildeexpansion(executable, home)) != executable) {
+		if((executables[watchcount] = spechandler(executable, home)) != executable) {
 		    free(executable);
 		}
 
