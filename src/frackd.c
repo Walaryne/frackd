@@ -25,6 +25,7 @@ char *spechandler(char *str, char *home) {
     if(*tmp == '~') {
         char *buf = malloc(((slen - 1) + hlen + 4) * sizeof(char));
         ++tmp;
+        //Sloppy, but stops strcpy from clobbering the manually set quote character.
         if(quotechar) {
             *buf = quotechar;
             ++buf;
