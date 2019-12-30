@@ -1,7 +1,67 @@
 #include "frackd.h"
+// ...I AM THE BEAST I WORSHIP... - MC Ride, Death Grips - Beware //
+
+char *pathresolver(void) {
+	enum PATH_RESOLVED {
+		HOME_DOTFRACKRC,
+		ETC_FRACKD_FRACKRC,
+		ETC_FRACKRC,
+		NULLFILE
+	};
+
+	char *home = getenv("HOME");
+	char file[] = "/.frackrc";
+	char buf[strlen(home) + strlen(file)];
+
+	if(home) {
+		strcpy(buf, home);
+		strcat(buf, file);
+	}
+
+	char *path = NULL;
+	char *paths[3];
+	enum PATH_RESOLVED p = -1;
+
+	paths[HOME_DOTFRACKRC] = buf;
+	paths[ETC_FRACKD_FRACKRC] = "/etc/frackd/frackrc";
+	paths[ETC_FRACKRC] = "/etc/frackrc";
+
+	for(int i = 0; i < 4; ++i) {
+		if(!(p = access(paths[i], F_OK))) {
+			break;
+		}
+	}
+
+	switch(p) {
+		case HOME_DOTFRACKRC: {
+			path = malloc(sizeof(char) * (strlen(paths[HOME_DOTFRACKRC]) + strlen(file)));
+			strcpy(path, paths[HOME_DOTFRACKRC]);
+			strcat(path, file);
+			WARN_LOG("~/.frackrc found, using\n");
+			return path;
+		}
+		case ETC_FRACKD_FRACKRC: {
+			path = malloc(sizeof(char) * strlen(paths[ETC_FRACKD_FRACKRC]));
+			strcpy(path, paths[ETC_FRACKD_FRACKRC]);
+			WARN_LOG("/etc/frackd/frackrc found, using\n");
+			return path;
+		}
+		case ETC_FRACKRC: {
+			path = malloc(sizeof(char) * strlen(paths[ETC_FRACKRC]));
+			strcpy(path, paths[ETC_FRACKRC]);
+			WARN_LOG("/etc/frackrc found, using\n");
+			return path;
+		}
+		default:
+		case NULLFILE: {
+			return NULL;
+		}
+	}
+}
 
 //FIXME This could allow a memory leak if return value isn't checked properly.
-char *spechandler(char *str, char *home) {
+char *spechandler(char *str) {
+	char *home = getenv("HOME");
 	unsigned long slen = strlen(str);
 	unsigned long hlen = strlen(home);
 	char quotechar = 0;
@@ -9,7 +69,7 @@ char *spechandler(char *str, char *home) {
 
 	//Check and see if the first character is a quote of some sort
 	//If so, silently ignore it.
-	switch (*tmp) {
+	switch(*tmp) {
 		case '"':
 		case '\'':
 		case '`': {
@@ -22,8 +82,8 @@ char *spechandler(char *str, char *home) {
 	}
 
 	//Easy check to see if ~ is the first character.
-	if (*tmp == '~') {
-		if (!home) {
+	if(*tmp == '~') {
+		if(!home) {
 			WARN_LOG("HOME environment variable is not defined, tilde expansion is disabled.\n");
 			WARN_LOG("Terminating.\n");
 			exit(1);
@@ -34,7 +94,7 @@ char *spechandler(char *str, char *home) {
 
 		//Sloppy, but stops strcpy from clobbering the manually set quote character.
 		//TODO Find a better way.
-		if (quotechar) {
+		if(quotechar) {
 			*buf = quotechar;
 			++buf;
 			strcpy(buf, home);
@@ -53,37 +113,24 @@ char *spechandler(char *str, char *home) {
 int readfrackrc(char **paths, char **executables) {
 	int watchcount = 0;
 	FILE *file = NULL;
-	char *home = getenv("HOME");
-	char *hfrc = "/.frackrc";
-	char *etfrc = "/etc/frackrc";
-	//Oversize the path array, saves extra logic
-	char path[(strlen(home) + strlen(hfrc)) + strlen(etfrc)];
 	char *watch, *executable;
+	char *path;
 
-	if (home) {
-		strcpy(path, home);
-		strcat(path, hfrc);
-
-		if (access(path, F_OK)) {
-			WARN_LOG(".frackrc was not found in home folder, using /etc/frackrc\n");
-			memset(path, 0, sizeof path / sizeof path[0]);
-			strcpy(path, etfrc);
-		}
-	} else {
-		WARN_LOG("HOME environment variable was not defined, using /etc/frackrc\n");
-		strcpy(path, etfrc);
+	if(!(path = pathresolver())) {
+		WARN_LOG("All possible paths exausted, no frackrc found! Terminating.");
+		exit(1);
 	}
 
-	if ((file = fopen(path, "r")) == NULL) {
+	if((file = fopen(path, "r")) == NULL) {
 		WARN_PE("fopen");
 		WARN_LOG("This error was likely caused " \
-                    "by a missing or unreadable frackrc file.\n");
+                    "by an unreadable frackrc file. Check permissions.\n");
 		WARN_LOG("Path was %s\n", path);
 		exit(1);
 	}
 
-	while (1) {
-		if (watchcount == MAX_WATCH_DESCRIPTORS) {
+	while(1) {
+		if(watchcount == MAX_WATCH_DESCRIPTORS) {
 			WARN_LOG("WARNING: Maximum of %d watch(es) has been reached!\n",
 					 MAX_WATCH_DESCRIPTORS);
 			return watchcount;
@@ -92,21 +139,22 @@ int readfrackrc(char **paths, char **executables) {
 		//WARNING!
 		//UNFREED ALLOCATIONS!
 		//Might be a problem later.
-		if ((fscanf(file, "%m[^:]:%m[^\n]", &watch, &executable)) < 2) {
+		if((fscanf(file, "%m[^:]:%m[^\n]", &watch, &executable)) < 2) {
 			break;
 		}
 
-		if ((paths[watchcount] = spechandler(watch, home)) != watch) {
+		if((paths[watchcount] = spechandler(watch)) != watch) {
 			free(watch);
 		}
 
-		if ((executables[watchcount] = spechandler(executable, home)) != executable) {
+		if((executables[watchcount] = spechandler(executable)) != executable) {
 			free(executable);
 		}
 
 		++watchcount;
 	}
 
+	free(path);
 	return watchcount;
 }
 
@@ -117,16 +165,16 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 
 	int len = read(infd, &buf, sizeof buf);
 
-	for (ptr = buf; ptr < (buf + len); ptr += sizeof(struct inotify_event) + event->len) {
+	for(ptr = buf; ptr < (buf + len); ptr += sizeof(struct inotify_event) + event->len) {
 		event = (struct inotify_event *) ptr;
 
-		if (event->wd > lutmax) {
+		if(event->wd > lutmax) {
 			WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n");
 			WARN_LOG("This should never happen; if it does, send a bug report asap.\n");
 			exit(1);
 		}
 
-		if (event->mask & IN_CLOSE_WRITE) {
+		if(event->mask & IN_CLOSE_WRITE) {
 			//Got rid of the hack, now using a lookup table.
 			system(lut[event->wd]);
 		}
@@ -136,7 +184,7 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 int main(int argc, char **argv) {
 
 	//Check to see if we are root, if so, exit immediately.
-	if (!getuid()) {
+	if(!getuid()) {
 		WARN_LOG("Running frackd as root is DANGEROUS!\n");
 		WARN_LOG("Please rerun using your normal account.\n");
 		WARN_LOG("Root support will be added later on!\n");
@@ -155,12 +203,12 @@ int main(int argc, char **argv) {
 	char **lut;
 	int lutmax;
 
-	if ((infd = inotify_init1(IN_NONBLOCK)) == -1) {
+	if((infd = inotify_init1(IN_NONBLOCK)) == -1) {
 		WARN_PE("inotify_init1");
 		exit(1);
 	}
 
-	if ((epfd = epoll_create1(0)) == -1) {
+	if((epfd = epoll_create1(0)) == -1) {
 		WARN_PE("epoll_create1");
 		exit(1);
 	}
@@ -168,12 +216,12 @@ int main(int argc, char **argv) {
 	ev.events = EPOLLIN;
 	ev.data.fd = infd;
 
-	if (epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &ev)) {
+	if(epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &ev)) {
 		WARN_PE("epoll_ctl");
 		exit(1);
 	}
 
-	if (!(wpc = readfrackrc(watchpaths, executables))) {
+	if(!(wpc = readfrackrc(watchpaths, executables))) {
 		WARN_LOG("FATAL ERROR: .frackrc was empty or malformed\n");
 		exit(1);
 	}
@@ -183,10 +231,10 @@ int main(int argc, char **argv) {
 	lutmax = rl.rlim_cur;
 	lut = malloc(sizeof lut * lutmax);
 
-	for (int temp, i = 0; i < wpc; ++i) {
+	for(int temp, i = 0; i < wpc; ++i) {
 		temp = inotify_add_watch(infd, watchpaths[i], IN_CLOSE_WRITE);
 
-		if (temp < 0) {
+		if(temp < 0) {
 			//perror("inotify_add_watch");
 			WARN_PE("inotify_add_watch");
 			exit(1);
@@ -200,11 +248,11 @@ int main(int argc, char **argv) {
 
 	WARN_LOG("...frackd successfully started...\n");
 
-	while (1) {
+	while(1) {
 		epoll_wait(epfd, events, MAX_EVENTS, -1);
 
-		for (int n = 0; n < MAX_EVENTS; ++n) {
-			if (events[n].data.fd == infd) {
+		for(int n = 0; n < MAX_EVENTS; ++n) {
+			if(events[n].data.fd == infd) {
 				handle_inotify(infd, lut, lutmax);
 			}
 		}
