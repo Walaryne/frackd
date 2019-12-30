@@ -24,8 +24,8 @@ char *spechandler(char *str, char *home) {
     //Easy check to see if ~ is the first character.
     if(*tmp == '~') {
         if(!home) {
-            WARN_LOG("HOME environment variable is not defined, tilde expansion is disabled.\n" \
-                "\tTerminating.");
+            WARN_LOG("HOME environment variable is not defined, tilde expansion is disabled.\n");
+            WARN_LOG("Terminating.\n");
             exit(1);
         }
 
@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	if((wpc = readfrackrc(watchpaths, executables)) == 0) {
+	if(!(wpc = readfrackrc(watchpaths, executables))) {
 		WARN_LOG("FATAL ERROR: .frackrc was empty or malformed\n");
 		exit(1);
 	}
