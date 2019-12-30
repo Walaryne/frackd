@@ -23,9 +23,17 @@ char *spechandler(char *str, char *home) {
 
     //Easy check to see if ~ is the first character.
     if(*tmp == '~') {
-        char *buf = malloc(((slen - 1) + hlen + 4) * sizeof(char));
+        if(!home) {
+            WARN_LOG("HOME environment variable is not defined, tilde expansion is disabled.\n" \
+                "\tTerminating.");
+            exit(1);
+        }
+
+        char *buf = malloc(sizeof(char) * ((slen - 1) + hlen + 4));
         ++tmp;
+
         //Sloppy, but stops strcpy from clobbering the manually set quote character.
+        //TODO Find a better way.
         if(quotechar) {
             *buf = quotechar;
             ++buf;
@@ -46,17 +54,31 @@ int readfrackrc(char **paths, char **executables) {
 	int watchcount = 0;
 	FILE *file = NULL;
 	char *home = getenv("HOME");
-	char *filename = "/.frackrc";
-	char path[(strlen(home) + strlen(filename)) + 2];
+	char *hfrc = "/.frackrc";
+	char *etfrc = "/etc/frackrc";
+	//Oversize the path array, saves extra logic
+	char path[(strlen(home) + strlen(hfrc)) + strlen(etfrc)];
 	char *watch, *executable;
 
-	strcpy(path, home);
-	strcat(path, filename);
+	if(home) {
+        strcpy(path, home);
+        strcat(path, hfrc);
+
+        if(access(path, F_OK)) {
+            WARN_LOG(".frackrc was not found in home folder, using /etc/frackrc\n");
+            memset(path, 0, sizeof path / sizeof path[0]);
+            strcpy(path, etfrc);
+        }
+	} else {
+        WARN_LOG("HOME environment variable was not defined, using /etc/frackrc\n");
+        strcpy(path, etfrc);
+	}
 
 	if((file = fopen(path, "r")) == NULL) {
 		WARN_PE("fopen");
 		WARN_LOG("This error was likely caused " \
-			"due to a missing .frackrc in your home folder.\n");
+		    "by a missing or unreadable frackrc file.\n");
+		WARN_LOG("Path was %s\n", path);
 		exit(1);
 	}
 
@@ -99,8 +121,8 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
         event = (struct inotify_event *) ptr;
 
         if (event->wd > lutmax) {
-            WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n" \
-                "This should never happen; if it does, send a bug report asap.\n");
+            WARN_LOG("FATAL ERROR: inotify watch descriptor number busted lookup table size.\n");
+            WARN_LOG("This should never happen; if it does, send a bug report asap.\n");
             exit(1);
         }
 
@@ -112,6 +134,14 @@ void handle_inotify(int infd, char **lut, rlim_t lutmax) {
 }
 
 int main(int argc, char **argv) {
+
+    //Check to see if we are root, if so, exit immediately.
+    if(!getuid()) {
+        WARN_LOG("Running frackd as root is DANGEROUS!\n");
+        WARN_LOG("Please rerun using your normal account.\n");
+        WARN_LOG("Root support will be added later on!\n");
+        exit(1);
+    }
 
 	DAEMON(1, 0);
 
@@ -151,7 +181,7 @@ int main(int argc, char **argv) {
 	//TODO Check and see if RLIMIT_NOFILE is a sane source for malloc sizing.
 	getrlimit(RLIMIT_NOFILE, &rl);
 	lutmax = rl.rlim_cur;
-	lut = malloc(lutmax * sizeof lut);
+	lut = malloc(sizeof lut * lutmax);
 
 	for(int temp, i = 0; i < wpc; ++i) {
 		temp = inotify_add_watch(infd, watchpaths[i], IN_CLOSE_WRITE);
