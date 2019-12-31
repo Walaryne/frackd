@@ -16,6 +16,8 @@ char *pathresolver(void) {
 	if(home) {
 		strcpy(buf, home);
 		strcat(buf, file);
+	} else {
+		memset(buf, 0, sizeof buf);
 	}
 
 	char *path = NULL;
