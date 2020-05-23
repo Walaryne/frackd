@@ -1,5 +1,4 @@
 #include "frackd.h"
-// ...I AM THE BEAST I WORSHIP... - MC Ride, Death Grips - Beware //
 
 char *pathresolver(void) {
 	enum PATH_RESOLVED {
@@ -28,7 +27,7 @@ char *pathresolver(void) {
 	paths[ETC_FRACKD_FRACKRC] = "/etc/frackd/frackrc";
 	paths[ETC_FRACKRC] = "/etc/frackrc";
 
-	for(int i = 0; i < 4; ++i) {
+	for(int i = 0; i <= 3; ++i) {
 		if(!(p = access(paths[i], F_OK))) {
 			break;
 		}
@@ -36,9 +35,8 @@ char *pathresolver(void) {
 
 	switch(p) {
 		case HOME_DOTFRACKRC: {
-			path = malloc(sizeof(char) * (strlen(paths[HOME_DOTFRACKRC]) + strlen(file)));
+			path = malloc(sizeof(char) * (strlen(paths[HOME_DOTFRACKRC])));
 			strcpy(path, paths[HOME_DOTFRACKRC]);
-			strcat(path, file);
 			WARN_LOG("~/.frackrc found, using\n");
 			return path;
 		}
@@ -61,65 +59,15 @@ char *pathresolver(void) {
 	}
 }
 
-//FIXME This could allow a memory leak if return value isn't checked properly.
-char *spechandler(char *str) {
-	char *home = getenv("HOME");
-	unsigned long slen = strlen(str);
-	unsigned long hlen = strlen(home);
-	char quotechar = 0;
-	char *tmp = str;
-
-	//Check and see if the first character is a quote of some sort
-	//If so, silently ignore it.
-	switch(*tmp) {
-		case '"':
-		case '\'':
-		case '`': {
-			quotechar = *tmp;
-			++tmp;
-		}
-		default: {
-			break;
-		}
-	}
-
-	//Easy check to see if ~ is the first character.
-	if(*tmp == '~') {
-		if(!home) {
-			WARN_LOG("HOME environment variable is not defined, tilde expansion is disabled.\n");
-			WARN_LOG("Terminating.\n");
-			exit(1);
-		}
-
-		char *buf = malloc(sizeof(char) * ((slen - 1) + hlen + 4));
-		++tmp;
-
-		//Sloppy, but stops strcpy from clobbering the manually set quote character.
-		//TODO Find a better way.
-		if(quotechar) {
-			*buf = quotechar;
-			++buf;
-			strcpy(buf, home);
-			strcat(buf, tmp);
-			--buf;
-		} else {
-			strcpy(buf, home);
-			strcat(buf, tmp);
-		}
-		return buf;
-	} else {
-		return str;
-	}
-}
-
 int readfrackrc(char **paths, char **executables) {
 	int watchcount = 0;
 	FILE *file = NULL;
 	char *watch, *executable;
 	char *path;
+	glob_t gw, ge;
 
 	if(!(path = pathresolver())) {
-		WARN_LOG("All possible paths exausted, no frackrc found! Terminating.");
+		WARN_LOG("All possible paths exhausted, no frackrc found! Terminating.");
 		exit(1);
 	}
 
@@ -145,11 +93,17 @@ int readfrackrc(char **paths, char **executables) {
 			break;
 		}
 
-		if((paths[watchcount] = spechandler(watch)) != watch) {
+		//These allocations will likely need to be freed in the future
+		if(glob(watch, GLOB_TILDE_CHECK, NULL, &gw) == GLOB_NOMATCH) {
+			WARN_LOG("Tilde expansion failed, is your HOME envar set? Exiting");
+			exit(1);
+		}
+
+		if((paths[watchcount] = gw.gl_pathv[0]) != watch) {
 			free(watch);
 		}
 
-		if((executables[watchcount] = spechandler(executable)) != executable) {
+		if((executables[watchcount] = executable) != executable) {
 			free(executable);
 		}
 
@@ -222,6 +176,8 @@ int main(int argc, char **argv) {
 		WARN_PE("epoll_ctl");
 		exit(1);
 	}
+
+	//setenv("IFS", "\n", 1);
 
 	if(!(wpc = readfrackrc(watchpaths, executables))) {
 		WARN_LOG("FATAL ERROR: .frackrc was empty or malformed\n");
