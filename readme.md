@@ -15,18 +15,21 @@
 > *frackd* will check for it's `.frackrc` file in three places (in order) before giving up in error.
 >
 > ```
-$HOME/.frackrc
-/etc/frackd/frackrc
-/etc/frackrc
+> $HOME/.frackrc
+> /etc/frackd/frackrc
+> /etc/frackrc
 > ```
-> Sidenote, if $HOME is not defined, tilde (~) expansion in `.frackrc` is disabled.
+
+> Sidenote, if $HOME is not defined, tilde (~) expansion in `.frackrc` will fail.
 
 
 > #### .frackrc example
 > ```
-/home/user/.local/myservice/config.txt:/usr/bin/myservice --restart
-~/.local/myotherservice/config file.txt:/usr/bin/myotherservice --reload
-/etc/afile:/usr/bin/myscript
+> /home/user/.local/myservice/config.txt:/usr/bin/myservice --restart
+>
+> ~/.local/myotherservice/config file.txt:/usr/bin/myotherservice --reload
+> 
+> /etc/afile:/usr/bin/myscript
 > ```
 
 ### Invocation
