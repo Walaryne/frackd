@@ -11,8 +11,6 @@
 #include <syslog.h>
 #include <glob.h>
 
-#define NO_DAEMON
-
 #define MAX_EVENTS 16
 #define MAX_WATCH_DESCRIPTORS 512
 

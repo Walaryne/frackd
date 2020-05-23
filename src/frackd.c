@@ -64,7 +64,7 @@ int readfrackrc(char **paths, char **executables) {
 	FILE *file = NULL;
 	char *watch, *executable;
 	char *path;
-	glob_t gw, ge;
+	glob_t gw;
 
 	if(!(path = pathresolver())) {
 		WARN_LOG("All possible paths exhausted, no frackrc found! Terminating.");
