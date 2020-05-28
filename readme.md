@@ -11,6 +11,8 @@
 > Each entry in the watchlist has a format of:
 > 
 > `<path of file to be watched>:<path of script, executable, or a shell command>`
+>
+> *frackd* runs the command pared with the file upon the save action of most editors.
 
 > *frackd* will check for it's `.frackrc` file in three places (in order) before giving up in error.
 >
