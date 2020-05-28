@@ -42,7 +42,7 @@
 > Simply use `frackd` if it's installed in your path, or the fullpath to it's current location.
 
 > #### NOTE:
-> *frackd* is **not** a systemd compliant daemon, as it would require linking against libsystemd, and since not everyone uses (or likes) systemd, and since linkage makes systemd a dependancy, I have chosen not to integrate it.
+> *frackd* is **not** a systemd compliant daemon, as it would require linking against libsystemd, and since not everyone uses (or likes) systemd, and since linkage makes systemd a dependency, I have chosen not to integrate it.
 
 ### Issues
 > *frackd* should **not** be run as **root** or other superuser comparable accounts, however running it as an account that is a **sudoer** or equivalent is acceptable (basically, don't do `sudo frackd`).
